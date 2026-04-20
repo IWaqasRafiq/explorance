@@ -4,6 +4,7 @@ import { ArrowRight, Inbox } from "lucide-react";
 import { AppLayout } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAnalysisStore } from "@/lib/store";
 import { JobStatusCard } from "@/components/job-status-card";
 import { LanguageChart } from "@/components/dashboard/language-chart";
@@ -12,6 +13,10 @@ import { StatGrid } from "@/components/dashboard/stat-grid";
 import { AISummary } from "@/components/dashboard/ai-summary";
 import { IssueList } from "@/components/dashboard/issue-list";
 import { DuplicateList } from "@/components/dashboard/duplicate-list";
+import { PurposeCard } from "@/components/dashboard/purpose-card";
+import { LibrariesList } from "@/components/dashboard/libraries-list";
+import { FolderStructure } from "@/components/dashboard/folder-tree";
+import { CredentialsList } from "@/components/dashboard/credentials-list";
 
 const Dashboard = () => {
   const { report, status, error } = useAnalysisStore();
@@ -72,19 +77,40 @@ const Dashboard = () => {
           ]}
         />
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <QualityScore score={report.qualityScore} />
-          <LanguageChart data={report.languages} />
-        </div>
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="libraries">Libraries</TabsTrigger>
+            <TabsTrigger value="structure">Folder structure</TabsTrigger>
+            <TabsTrigger value="credentials">Credentials</TabsTrigger>
+          </TabsList>
 
-        <AISummary summary={report.summary} />
+          <TabsContent value="overview" className="space-y-6">
+            <PurposeCard purpose={report.purpose} />
+            <div className="grid gap-6 md:grid-cols-2">
+              <QualityScore score={report.qualityScore} />
+              <LanguageChart data={report.languages} />
+            </div>
+            <AISummary summary={report.summary} />
+            <div className="grid gap-6 md:grid-cols-2">
+              <IssueList title="Bug report" kind="bug" issues={report.bugs} />
+              <IssueList title="Performance issues" kind="perf" issues={report.performance} />
+            </div>
+            <DuplicateList items={report.duplicates} />
+          </TabsContent>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <IssueList title="Bug report" kind="bug" issues={report.bugs} />
-          <IssueList title="Performance issues" kind="perf" issues={report.performance} />
-        </div>
+          <TabsContent value="libraries">
+            <LibrariesList libraries={report.libraries} />
+          </TabsContent>
 
-        <DuplicateList items={report.duplicates} />
+          <TabsContent value="structure">
+            <FolderStructure root={report.folderStructure} />
+          </TabsContent>
+
+          <TabsContent value="credentials">
+            <CredentialsList credentials={report.credentials} />
+          </TabsContent>
+        </Tabs>
       </section>
     </AppLayout>
   );
