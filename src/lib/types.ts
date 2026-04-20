@@ -40,11 +40,34 @@ export interface Duplicate {
   snippet: string;
 }
 
+export interface Library {
+  name: string;
+  version: string;
+  type: "runtime" | "dev" | "peer";
+  purpose: string;
+}
+
+export interface FolderNode {
+  name: string;
+  kind: "dir" | "file";
+  description?: string;
+  children?: FolderNode[];
+}
+
+export interface Credential {
+  name: string;
+  required: boolean;
+  description: string;
+  example?: string;
+  where: string; // where to obtain it
+}
+
 export interface Report {
   id: string;
   repo: string;
   analyzedAt: string;
   summary: string;
+  purpose: string;
   qualityScore: number; // 0-100
   metrics: {
     files: number;
@@ -53,6 +76,9 @@ export interface Report {
     coverage: number;
   };
   languages: LanguageBreakdown[];
+  libraries: Library[];
+  folderStructure: FolderNode;
+  credentials: Credential[];
   bugs: Issue[];
   performance: Issue[];
   duplicates: Duplicate[];
