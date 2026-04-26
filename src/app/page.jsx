@@ -22,7 +22,7 @@ const Index = () => {
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-border/60">
         <div className="grid-bg pointer-events-none absolute inset-0" />
-        <div className="container relative py-20 md:py-32">
+        <div className="container relative py-10">
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -54,7 +54,7 @@ const Index = () => {
       </section>
 
       {/* Features */}
-      <section className="container py-20 md:py-28">
+      <section className="container py-10 ">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-semibold tracking-tight md:text-4xl">Everything in one report</h2>
           <p className="mt-3 text-muted-foreground">Designed for engineers shipping at speed.</p>

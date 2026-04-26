@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Github } from "lucide-react";
+import Logo from '../../public/Explorance-logo.png';
 import { ThemeToggle } from "./theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import Image from 'next/image';
 
 const links = [
   { href: "/", label: "Home" },
@@ -21,7 +22,7 @@ export function SiteHeader() {
       <div className="container flex h-14 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background">
-            <Github className="h-4 w-4" />
+            <Image src={Logo} alt="Explorance Logo" width={24} height={24} />
           </div>
           <span>Explorance</span>
         </Link>
