@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { motion } from "framer-motion";
 import { AppLayout } from "@/components/app-layout";
@@ -10,7 +11,23 @@ import { useAnalysisStore } from "@/lib/store";
 
 const Analyze = () => {
   const router = useRouter();
-  const { status, error, report, reset } = useAnalysisStore();
+  const { status, error, report, reset, isPolling } = useAnalysisStore();
+  const [recentProjects, setRecentProjects] = useState([]);
+
+  useEffect(() => {
+    const fetchRecent = async () => {
+      try {
+        const res = await fetch("/api/recent");
+        if (res.ok) {
+          const data = await res.json();
+          setRecentProjects(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch recent projects:", err);
+      }
+    };
+    fetchRecent();
+  }, [isPolling]); // Refresh when a new analysis completes (isPolling changes from true to false)
 
   useEffect(() => {
     document.title = "Analyze · AI GitHub Explorer";
@@ -40,18 +57,41 @@ const Analyze = () => {
 
         <div className="mt-6 space-y-3">
           <JobStatusCard status={status} error={error} />
-          {(status || error) &&
-          <button
-            onClick={reset}
-            className="font-mono text-xs text-muted-foreground underline-offset-4 hover:underline">
-            
+          {(status || error) && (
+            <button
+              onClick={reset}
+              className="font-mono text-xs text-muted-foreground underline-offset-4 hover:underline"
+            >
               reset
             </button>
-          }
+          )}
         </div>
-      </section>
-    </AppLayout>);
 
+        {recentProjects.length > 0 && (
+          <div className="mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <h2 className="text-sm font-medium text-muted-foreground">Recent Scans</h2>
+            <div className="mt-4 overflow-hidden rounded-lg border bg-card">
+              <ul className="divide-y">
+                {recentProjects.map((project) => (
+                  <li key={project._id} className="group">
+                    <Link 
+                      href={`/report/${project._id}`}
+                      className="flex items-center justify-between p-4 transition-colors hover:bg-muted/50"
+                    >
+                      <span className="truncate font-mono text-sm">{project.repoUrl}</span>
+                      <span className="ml-4 text-xs text-muted-foreground">
+                        {new Date(project.createdAt).toLocaleDateString()}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+      </section>
+    </AppLayout>
+  );
 };
 
 export default Analyze;
