@@ -86,11 +86,11 @@ const ReportPage = () => {
 
         <StatGrid
           stats={[
-          { label: "Files", value: report.metrics.files },
-          { label: "Lines of code", value: report.metrics.lines.toLocaleString() },
-          { label: "Avg complexity", value: report.metrics.complexity, hint: "cyclomatic" },
-          { label: "Test coverage", value: `${report.metrics.coverage}%` }]
-          } />
+            { label: "Files", value: report?.metrics?.files ?? 0 },
+            { label: "Lines of code", value: (report?.metrics?.lines ?? 0).toLocaleString() },
+            { label: "Avg complexity", value: report?.metrics?.complexity ?? 0, hint: "cyclomatic" },
+            { label: "Test coverage", value: `${report?.metrics?.coverage ?? 0}%` }
+          ]} />
         
 
         <Tabs defaultValue="overview" className="space-y-6">

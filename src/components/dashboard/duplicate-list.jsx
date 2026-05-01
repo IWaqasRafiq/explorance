@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 
-export function DuplicateList({ items }) {
+export function DuplicateList({ items = [] }) {
   return (
     <Card>
       <CardHeader>

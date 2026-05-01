@@ -38,13 +38,15 @@ export const apiClient = {
     }
     const data = await res.json();
     
-    // Map backend status to what frontend expects
-    let stage = "Working";
-    if (data.progress < 20) stage = "Cloning repository";
-    else if (data.progress < 40) stage = "Indexing files";
-    else if (data.progress < 70) stage = "Static analysis";
-    else if (data.progress < 90) stage = "AI review";
-    else stage = "Generating report";
+    // Use backend stage if available, otherwise fallback to progress-based mapping
+    let stage = data.stage;
+    if (!stage) {
+      if (data.progress < 20) stage = "Cloning repository";
+      else if (data.progress < 40) stage = "Indexing files";
+      else if (data.progress < 70) stage = "Static analysis";
+      else if (data.progress < 90) stage = "AI review";
+      else stage = "Generating report";
+    }
 
     if (data.status === 'completed') {
       stage = 'Done';

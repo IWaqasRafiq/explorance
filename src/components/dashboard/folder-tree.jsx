@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 function Node({ node, depth = 0 }) {
   const [open, setOpen] = useState(depth < 1);
+  if (!node) return null;
   const isDir = node.kind === "dir";
   const Icon = isDir ? open ? FolderOpen : Folder : File;
 
@@ -51,7 +52,7 @@ function Node({ node, depth = 0 }) {
 
 }
 
-export function FolderStructure({ root }) {
+export function FolderStructure({ root = {} }) {
   return (
     <Card>
       <CardHeader>

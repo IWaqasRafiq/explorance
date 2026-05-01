@@ -1,6 +1,8 @@
 import { GithubService } from '../services/github.service.js';
 import { FileService } from '../services/file.service.js';
-import { AIService } from '../services/ai.service.js';
+import { ChunkingService } from '../services/chunking.service.js';
+import { VectorService } from '../services/vector.service.js';
+import { ReportService } from '../services/report.service.js';
 import { connectDB } from '../lib/db.js';
 import Project from '../models/Project.js';
 import AnalysisResult from '../models/AnalysisResult.js';
@@ -9,54 +11,56 @@ export default async function processor(job) {
   const { projectId, repoUrl } = job.data;
   let tempDir = null;
 
-  console.log(`[PROCESSOR] Starting job for project ${projectId}, url: ${repoUrl}`);
+  console.log(`[PROCESSOR] Starting production pipeline for project ${projectId}`);
 
   try {
     await connectDB();
-    console.log(`[PROCESSOR] DB connected`);
-    
-    await Project.findByIdAndUpdate(projectId, { status: 'processing', progress: 10 });
-    await job.updateProgress(10);
 
-    // 1. Clone Repo
-    console.log(`[PROCESSOR] Cloning repo...`);
+    const updateStatus = async (progress, stage) => {
+      await Project.findByIdAndUpdate(projectId, { progress, stage });
+      await job.updateProgress(progress);
+    };
+
+    // 1. Ingestion
+    await updateStatus(10, 'Cloning repository...');
     tempDir = await GithubService.cloneRepo(repoUrl);
-    console.log(`[PROCESSOR] Repo cloned to ${tempDir}`);
-    
-    await Project.findByIdAndUpdate(projectId, { progress: 30 });
-    await job.updateProgress(30);
 
-    // 2. Scan Files
-    console.log(`[PROCESSOR] Scanning files...`);
+    await updateStatus(25, 'Scanning and filtering files...');
     const files = await FileService.scanDirectory(tempDir);
-    console.log(`[PROCESSOR] Scanned ${files.length} files`);
-    
-    await Project.findByIdAndUpdate(projectId, { progress: 50 });
-    await job.updateProgress(50);
 
-    // 3. AI Analysis
-    console.log(`[PROCESSOR] Running AI analysis...`);
-    const analysis = await AIService.analyzeFiles(files);
-    console.log(`[PROCESSOR] AI analysis complete`);
-    
-    await Project.findByIdAndUpdate(projectId, { progress: 80 });
-    await job.updateProgress(80);
+    // 2. Parallel Processing (Faster performance)
+    await updateStatus(40, 'Processing Intelligence & Analysis...');
+    const chunks = ChunkingService.processFiles(files);
 
-    // 4. Save Results
-    console.log(`[PROCESSOR] Saving results...`);
+    // Run report generation and embedding storage in parallel
+    const [report] = await Promise.all([
+      ReportService.generateFullReport(projectId, files),
+      // Limit embeddings for large repos to stay under 60s
+      VectorService.storeChunks(projectId, chunks.slice(0, 150)) 
+    ]);
+
+    // 3. Finalizing
+    await updateStatus(95, 'Saving results...');
     await AnalysisResult.create({
       projectId,
-      reportData: analysis
+      reportData: report
     });
 
-    await Project.findByIdAndUpdate(projectId, { status: 'completed', progress: 100 });
-    await job.updateProgress(100);
-    console.log(`[PROCESSOR] Job complete!`);
+    await Project.findByIdAndUpdate(projectId, { 
+      status: 'completed', 
+      progress: 100, 
+      stage: 'Done' 
+    });
 
+    console.log(`[PROCESSOR] Project ${projectId} analyzed successfully.`);
     return { success: true };
+
   } catch (error) {
-    console.error(`Job failed for project ${projectId}:`, error);
-    await Project.findByIdAndUpdate(projectId, { status: 'failed', error: error.message });
+    console.error(`[PROCESSOR] Job failed:`, error);
+    await Project.findByIdAndUpdate(projectId, { 
+      status: 'failed', 
+      error: error.message 
+    });
     throw error;
   } finally {
     if (tempDir) {

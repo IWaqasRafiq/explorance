@@ -1,71 +1,111 @@
-import { getGemini } from '../lib/gemini.js';
+import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: 'http://localhost:11434/v1',
+  apiKey: 'ollama',
+});
 
 export class AIService {
-  static async analyzeFiles(files) {
-    const ai = getGemini();
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not configured.");
+  /**
+   * Checks if Ollama is running
+   */
+  static async isAvailable() {
+    try {
+      const response = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) });
+      return response.ok;
+    } catch (e) {
+      return false;
     }
+  }
 
-    const fileSummaries = files.map(f => ({
-      path: f.path,
-      content: f.content.substring(0, 2000),
-    })).slice(0, 30);
-    
-    const prompt = `
-You are an expert AI software architect. Analyze the following repository files and provide a comprehensive structured report.
-Return the output STRICTLY as a JSON object with the following schema exactly (with no markdown wrappers):
-{
-  "summary": "A 2-3 sentence overview of what the application does.",
-  "purpose": "A longer description of the project's goals and architecture.",
-  "qualityScore": 85,
-  "metrics": { "files": 120, "lines": 5000, "complexity": 12.5, "coverage": 80 },
-  "languages": [ { "name": "TypeScript", "percent": 80, "bytes": 100000 } ],
-  "bugs": [ { "id": "b_1", "title": "Bug title", "file": "path", "line": 15, "severity": "high", "description": "Desc" } ],
-  "performance": [ { "id": "p_1", "title": "Perf title", "file": "path", "line": 20, "severity": "medium", "description": "Desc" } ],
-  "duplicates": [ { "id": "d_1", "files": ["path1", "path2"], "lines": 30, "similarity": 0.95, "snippet": "code snippet" } ],
-  "libraries": [ { "name": "react", "version": "18.0", "type": "runtime", "purpose": "UI" } ],
-  "folderStructure": { "name": "root", "kind": "dir", "description": "root", "children": [ { "name": "src", "kind": "dir", "description": "source", "children": [] } ] },
-  "credentials": [ { "name": "API_KEY", "required": true, "description": "desc", "example": "key", "where": "how to get it" } ]
-}
+  /**
+   * Generates deep architectural insights based on file summaries and static analysis data
+   */
+  static async generateInsights(files, staticResults) {
+    console.log(`[AI_SERVICE] Generating architectural insights for ${files.length} files...`);
 
-Files to analyze:
-${JSON.stringify(fileSummaries, null, 2)}
-`;
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const isProd = !!GEMINI_API_KEY;
 
-    // Use Gemini 1.5 Flash (most stable version)
-    let retries = 3;
-    let response;
-    
-    while (retries > 0) {
-      try {
-        console.log(`[AI SERVICE] Sending request to Gemini (Attempt ${4 - retries})...`);
-        response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
-          contents: prompt,
-          config: {
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          }
-        });
-        console.log(`[AI SERVICE] Received response from Gemini`);
-        break; // Success, exit loop
-      } catch (err) {
-        retries--;
-        console.error(`[AI SERVICE] Gemini API error:`, err.message);
-        if (retries === 0 || (err.status !== 503 && err.status !== 429)) {
-          throw err;
-        }
-        console.warn(`[AI SERVICE] Retrying in 2 seconds...`);
-        await new Promise(r => setTimeout(r, 2000));
+    if (!isProd) {
+      const available = await this.isAvailable();
+      if (!available) {
+        console.warn("[AI_SERVICE] Ollama not available, returning basic insights.");
+        return this.getFallbackInsights(files, staticResults);
       }
     }
 
-    if (!response || !response.text) {
-      throw new Error("Empty response from AI service");
-    }
+    // Prepare a condensed summary of the most important files
+    const fileList = files
+      .sort((a, b) => b.lines - a.lines)
+      .slice(0, 20)
+      .map(f => `- ${f.path} (${f.lines} lines)`)
+      .join('\n');
+    
+    const prompt = `
+Context: ${files.length} total files. Top 20:
+${fileList}
 
-    const result = JSON.parse(response.text);
-    return result;
+Stats:
+- Duplicates: ${staticResults.duplicates.length}
+- Unused: ${staticResults.unusedCode.length}
+- Quality Score: ${staticResults.metrics.qualityScore}/100
+
+JSON Report Task:
+1. "summary": 2-sentence project overview.
+2. "recommendations": Top 3 refactoring tips.
+3. "techStack": List main technologies.
+4. "architectureStyle": (e.g., MVC, Component-based).
+5. "bugs": List 3 potential bugs {id, title, file, line, description, severity}.
+6. "performance": List 3 bottlenecks {id, title, file, line, description, severity}.
+
+JSON ONLY:
+`;
+
+    try {
+      if (isProd) {
+        // Production: Use Google Gemini API
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { response_mime_type: "application/json" }
+          })
+        });
+
+        if (!response.ok) throw new Error(`Gemini Error: ${response.statusText}`);
+        const data = await response.json();
+        const content = data.candidates[0].content.parts[0].text;
+        return JSON.parse(content);
+      } else {
+        // Development: Use Local Ollama
+        const response = await client.chat.completions.create({
+          model: 'llama3',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+          response_format: { type: 'json_object' }
+        }, { timeout: 30000 });
+
+        const content = response.choices[0].message.content;
+        const jsonString = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(jsonString);
+      }
+    } catch (error) {
+      console.error("[AI_SERVICE] Insight generation failed:", error.message);
+      return this.getFallbackInsights(files, staticResults);
+    }
+  }
+
+  static getFallbackInsights(files, staticResults) {
+    const extensions = [...new Set(files.map(f => f.extension))];
+    return {
+      summary: "Comprehensive static analysis complete. To unlock deep architectural insights and automated refactoring suggestions, please ensure your local Ollama instance is running with the 'llama3' model.",
+      recommendations: ["Ensure your local Ollama instance is running for deeper insights.", "Check duplicate code blocks identified in the static analysis."],
+      techStack: extensions.map(ext => ext.replace('.', '').toUpperCase()),
+      architectureStyle: "Standard",
+      bugs: [],
+      performance: []
+    };
   }
 }

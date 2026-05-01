@@ -19,7 +19,7 @@ const SEVERITY_STYLES = {
 
 
 
-export function IssueList({ title, kind, issues }) {
+export function IssueList({ title, kind, issues = [] }) {
   const Icon = kind === "bug" ? Bug : Zap;
   return (
     <Card>

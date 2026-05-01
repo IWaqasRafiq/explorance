@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 import { cn } from "@/lib/utils";
 
-export function CredentialsList({ credentials }) {
+export function CredentialsList({ credentials = [] }) {
   const [copied, setCopied] = useState(null);
   const required = credentials.filter((c) => c.required);
   const optional = credentials.filter((c) => !c.required);

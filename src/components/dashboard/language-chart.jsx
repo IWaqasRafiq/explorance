@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const COLORS = ["hsl(var(--chart-1))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))", "hsl(var(--chart-5))", "hsl(var(--chart-6))"];
 
 export function LanguageChart({ data }) {
+  const chartData = data || [];
+
   return (
     <Card>
       <CardHeader>
@@ -17,9 +19,9 @@ export function LanguageChart({ data }) {
           <div className="h-[200px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={data} dataKey="percent" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="hsl(var(--background))">
-                  {data.map((_, i) =>
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                <Pie data={chartData} dataKey="percent" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="hsl(var(--background))">
+                  {chartData.map((_, i) =>
+                    <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />
                   )}
                 </Pie>
                 <Tooltip
@@ -35,8 +37,8 @@ export function LanguageChart({ data }) {
             </ResponsiveContainer>
           </div>
           <ul className="space-y-2">
-            {data.map((l, i) =>
-            <li key={l.name} className="flex items-center justify-between text-sm">
+            {chartData.map((l, i) =>
+              <li key={l.name || i} className="flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-sm" style={{ background: COLORS[i % COLORS.length] }} />
                   <span>{l.name}</span>
@@ -47,6 +49,6 @@ export function LanguageChart({ data }) {
           </ul>
         </div>
       </CardContent>
-    </Card>);
-
+    </Card>
+  );
 }

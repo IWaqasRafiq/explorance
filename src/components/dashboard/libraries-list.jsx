@@ -14,7 +14,7 @@ const TYPE_STYLES = {
   peer: "bg-warning/15 text-warning border-warning/30"
 };
 
-export function LibrariesList({ libraries }) {
+export function LibrariesList({ libraries = [] }) {
   const [q, setQ] = useState("");
   const filtered = useMemo(
     () => libraries.filter((l) => l.name.toLowerCase().includes(q.toLowerCase())),

@@ -58,6 +58,9 @@ if (USE_REAL_QUEUE) {
 } else {
   console.log('Using mock in-memory queue');
   queue = new MockQueue('repo-processing');
+  // In mock mode, automatically register the processor so jobs added in this process are handled
+  queue.processor = processor;
+  console.log('Mock processor registered in current process');
 }
 
 export const repoQueue = queue;

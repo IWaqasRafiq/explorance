@@ -20,6 +20,10 @@ const ProjectSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    stage: {
+      type: String,
+      default: 'Initializing',
+    },
     error: {
       type: String,
     },

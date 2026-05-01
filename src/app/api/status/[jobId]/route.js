@@ -29,6 +29,7 @@ export async function GET(req, { params }) {
       jobId: project.jobId,
       status: project.status,
       progress: project.progress,
+      stage: project.stage,
       error: project.error,
     });
   } catch (error) {
