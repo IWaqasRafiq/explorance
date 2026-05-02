@@ -79,8 +79,9 @@ export class VectorService {
    * Stores chunks in MongoDB with embeddings
    * @param {string} projectId 
    * @param {Array<{content: string, metadata: Object}>} chunks 
+   * @param {Function} onProgress Optional callback for progress updates
    */
-  static async storeChunks(projectId, chunks) {
+  static async storeChunks(projectId, chunks, onProgress) {
     if (!chunks || chunks.length === 0) return;
     
     console.log(`[VECTOR_SERVICE] Processing ${chunks.length} chunks for project ${projectId}...`);
@@ -99,6 +100,7 @@ export class VectorService {
         metadata: chunk.metadata
       }));
       await CodeChunk.insertMany(processedChunks);
+      if (onProgress) await onProgress(90, 'Analysis complete...');
       return;
     }
 
@@ -120,8 +122,14 @@ export class VectorService {
       const processedBatch = await Promise.all(batchPromises);
       await CodeChunk.insertMany(processedBatch);
       
-      const progress = Math.min(100, Math.round(((i + BATCH_SIZE) / chunks.length) * 100));
-      console.log(`[VECTOR_SERVICE] Vector Storage Progress: ${progress}%`);
+      if (onProgress) {
+        // Map 40-90% range for vector storage
+        const percent = Math.min(100, Math.round(((i + BATCH_SIZE) / chunks.length) * 100));
+        const overallProgress = 40 + Math.round((percent / 100) * 50);
+        await onProgress(overallProgress, `Vectorizing code (${percent}%)...`);
+      }
+      
+      console.log(`[VECTOR_SERVICE] Vector Storage Progress: ${i + batch.length}/${chunks.length}`);
     }
 
     console.log(`[VECTOR_SERVICE] Successfully stored all chunks.`);

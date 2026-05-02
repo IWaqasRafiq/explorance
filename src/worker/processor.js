@@ -38,7 +38,7 @@ export default async function processor(job) {
     // Run report generation and embedding storage in parallel
     const [report] = await Promise.all([
       ReportService.generateFullReport(projectId, files),
-      VectorService.storeChunks(projectId, chunks.slice(0, CHUNK_LIMIT)) 
+      VectorService.storeChunks(projectId, chunks.slice(0, CHUNK_LIMIT), updateStatus) 
     ]);
 
     // 3. Finalizing

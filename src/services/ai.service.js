@@ -71,7 +71,8 @@ JSON ONLY:
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { response_mime_type: "application/json" }
-          })
+          }),
+          signal: AbortSignal.timeout(30000) // 30 second timeout
         });
 
         if (!response.ok) throw new Error(`Gemini Error: ${response.statusText}`);
