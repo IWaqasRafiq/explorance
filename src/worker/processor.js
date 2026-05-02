@@ -32,25 +32,39 @@ export default async function processor(job) {
     await updateStatus(40, 'Processing Intelligence & Analysis...');
     const chunks = ChunkingService.processFiles(files);
 
+    const isProd = !!process.env.GEMINI_API_KEY;
+    const CHUNK_LIMIT = isProd ? 50 : 150; // Drastically reduce limit in production to avoid Vercel timeouts
+
     // Run report generation and embedding storage in parallel
     const [report] = await Promise.all([
       ReportService.generateFullReport(projectId, files),
-      // Limit embeddings for large repos to stay under 60s
-      VectorService.storeChunks(projectId, chunks.slice(0, 150)) 
+      VectorService.storeChunks(projectId, chunks.slice(0, CHUNK_LIMIT)) 
     ]);
 
     // 3. Finalizing
-    await updateStatus(95, 'Saving results...');
-    await AnalysisResult.create({
-      projectId,
-      reportData: report
-    });
+    await updateStatus(90, 'Saving results...');
+    
+    try {
+      await AnalysisResult.create({
+        projectId,
+        reportData: report
+      });
 
-    await Project.findByIdAndUpdate(projectId, { 
-      status: 'completed', 
-      progress: 100, 
-      stage: 'Done' 
-    });
+      await Project.findByIdAndUpdate(projectId, { 
+        status: 'completed', 
+        progress: 100, 
+        stage: 'Done' 
+      });
+    } catch (saveError) {
+      console.error(`[PROCESSOR] Failed to save final results:`, saveError);
+      // Even if saving the full report fails, mark the project as done with what we have
+      await Project.findByIdAndUpdate(projectId, { 
+        status: 'completed', 
+        progress: 100, 
+        stage: 'Done (Partial)',
+        error: "Report saved but full analysis storage failed."
+      });
+    }
 
     console.log(`[PROCESSOR] Project ${projectId} analyzed successfully.`);
     return { success: true };

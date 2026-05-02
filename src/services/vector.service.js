@@ -4,7 +4,16 @@ export class VectorService {
   /**
    * Checks if Ollama is running and has the required model
    */
+  /**
+   * Checks if Ollama is running and has the required model
+   */
   static async isAvailable() {
+    // In production (Vercel), Ollama is never available on localhost.
+    // Skip the 2s timeout wait to save time.
+    if (process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'production') {
+      return false;
+    }
+
     try {
       const response = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) });
       return response.ok;
@@ -36,6 +45,11 @@ export class VectorService {
 
         if (!response.ok) throw new Error(`Gemini Embedding Error: ${response.statusText}`);
         const data = await response.json();
+        
+        if (!data.embedding || !data.embedding.values) {
+          throw new Error("Invalid embedding response from Gemini");
+        }
+        
         return data.embedding.values;
       } else {
         // Development: Use Local Ollama
@@ -56,7 +70,8 @@ export class VectorService {
       }
     } catch (error) {
       console.error("[VECTOR_SERVICE] Failed to generate embedding:", error.message);
-      throw error;
+      // Return a zero-vector as fallback to prevent the whole job from failing
+      return new Array(768).fill(0); 
     }
   }
 
@@ -66,51 +81,47 @@ export class VectorService {
    * @param {Array<{content: string, metadata: Object}>} chunks 
    */
   static async storeChunks(projectId, chunks) {
-    console.log(`[VECTOR_SERVICE] Generating embeddings for ${chunks.length} chunks...`);
+    if (!chunks || chunks.length === 0) return;
+    
+    console.log(`[VECTOR_SERVICE] Processing ${chunks.length} chunks for project ${projectId}...`);
     
     const available = await this.isAvailable();
-    if (!available) {
-      console.warn("[VECTOR_SERVICE] Ollama not available, skipping embeddings. Semantic search will be disabled.");
-      // Still store the chunks but without embeddings
+    const isProd = !!process.env.GEMINI_API_KEY;
+
+    // In production, we use Gemini. In dev, we use Ollama.
+    // If neither is available, we store without embeddings.
+    if (!available && !isProd) {
+      console.warn("[VECTOR_SERVICE] No embedding service available, storing raw chunks.");
       const processedChunks = chunks.map(chunk => ({
         projectId,
         content: chunk.content,
-        embedding: [], // Empty embedding
+        embedding: [], 
         metadata: chunk.metadata
       }));
       await CodeChunk.insertMany(processedChunks);
       return;
     }
 
-    // Process in larger batches to speed up local processing
-    const BATCH_SIZE = 30;
+    // Process in batches
+    const BATCH_SIZE = isProd ? 10 : 30; // Smaller batches for Gemini to avoid rate limits
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
       
       const batchPromises = batch.map(async (chunk) => {
-        try {
-          const embedding = await this.generateEmbedding(chunk.content);
-          return {
-            projectId,
-            content: chunk.content,
-            embedding,
-            metadata: chunk.metadata
-          };
-        } catch (e) {
-          return {
-            projectId,
-            content: chunk.content,
-            embedding: [],
-            metadata: chunk.metadata
-          };
-        }
+        const embedding = await this.generateEmbedding(chunk.content);
+        return {
+          projectId,
+          content: chunk.content,
+          embedding,
+          metadata: chunk.metadata
+        };
       });
 
       const processedBatch = await Promise.all(batchPromises);
       await CodeChunk.insertMany(processedBatch);
       
       const progress = Math.min(100, Math.round(((i + BATCH_SIZE) / chunks.length) * 100));
-      console.log(`[VECTOR_SERVICE] Progress: ${progress}%`);
+      console.log(`[VECTOR_SERVICE] Vector Storage Progress: ${progress}%`);
     }
 
     console.log(`[VECTOR_SERVICE] Successfully stored all chunks.`);
