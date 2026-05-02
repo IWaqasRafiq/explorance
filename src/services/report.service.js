@@ -21,6 +21,7 @@ export class ReportService {
       projectId,
       timestamp: new Date().toISOString(),
       summary: aiInsights.summary || "Project summary not available.",
+      purpose: staticResults.purpose, // Added missing purpose
       metrics: staticResults.metrics,
       languages: staticResults.metrics.languages || [],
       qualityScore: staticResults.metrics.qualityScore ?? 0,

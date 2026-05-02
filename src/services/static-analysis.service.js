@@ -64,7 +64,9 @@ export class StaticAnalysisService {
       { regex: /eval\(/g, title: 'Security Risk: eval()', severity: 'critical', desc: 'Use of eval() is a major security vulnerability.' },
       { regex: /innerHTML\s*=/g, title: 'Security Risk: innerHTML', severity: 'high', desc: 'Potential XSS vulnerability. Use textContent instead.' },
       { regex: /TODO|FIXME/gi, title: 'Technical Debt', severity: 'medium', desc: 'Unresolved TODO or FIXME comment found.' },
-      { regex: /==\s*null|==\s*undefined/g, title: 'Loose Equality Check', severity: 'low', desc: 'Prefer strict equality (===) over loose equality (==).' }
+      { regex: /==\s*null|==\s*undefined/g, title: 'Loose Equality Check', severity: 'low', desc: 'Prefer strict equality (===) over loose equality (==).' },
+      { regex: /\bvar\b/g, title: 'Legacy Variable Declaration', severity: 'low', desc: 'Use let or const instead of var.' },
+      { regex: /document\.write\(/g, title: 'Security Risk: document.write', severity: 'high', desc: 'document.write is a security risk and bad for performance.' }
     ];
 
     for (const file of files) {
@@ -94,10 +96,11 @@ export class StaticAnalysisService {
   static detectPerformance(files) {
     const issues = [];
     const patterns = [
-      { regex: /useEffect\(\(\s*\)\s*=>\s*\{[^}]*\},\s*\[\s*\]\s*\)/g, title: 'Empty Dependency Array', severity: 'low', desc: 'Ensure this effect only needs to run once. Otherwise, specify dependencies.' },
-      { regex: /\.map\(\s*\([^)]*\)\s*=>\s*\{[^}]*\}\s*\)/g, title: 'Inline Mapping', severity: 'low', desc: 'Consider moving complex mapping logic outside of the render cycle.' },
+      { regex: /useEffect\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{[^}]*\},\s*\[\s*\]\s*\)/g, title: 'Empty Dependency Array', severity: 'low', desc: 'Ensure this effect only needs to run once. Otherwise, specify dependencies.' },
+      { regex: /\.map\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{[^}]*\}\s*\)/g, title: 'Inline Mapping', severity: 'low', desc: 'Consider moving complex mapping logic outside of the render cycle.' },
       { regex: /@import/g, title: 'CSS Import', severity: 'medium', desc: 'Using @import in CSS can delay page rendering.' },
-      { regex: /document\.querySelector/g, title: 'DOM Querying', severity: 'low', desc: 'Frequent DOM querying can be slow. Consider caching references.' }
+      { regex: /document\.querySelector/g, title: 'DOM Querying', severity: 'low', desc: 'Frequent DOM querying can be slow. Consider caching references.' },
+      { regex: /for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*\w+\.length;\s*i\+\+\s*\)/g, title: 'Non-cached Length in Loop', severity: 'low', desc: 'Accessing length on every iteration is slightly slower than caching it.' }
     ];
 
     for (const file of files) {
@@ -126,7 +129,8 @@ export class StaticAnalysisService {
   static calculateMetrics(files, duplicates = [], unusedExports = []) {
     let totalLines = 0;
     let totalBytes = 0;
-    let complexFiles = 0;
+    let totalComplexity = 0;
+    let testFiles = 0;
     const langMap = new Map();
 
     files.forEach(file => {
@@ -138,16 +142,21 @@ export class StaticAnalysisService {
       current.bytes += file.size;
       langMap.set(lang, current);
 
-      // More sensitive complexity check
+      if (file.path.toLowerCase().includes('test') || file.path.toLowerCase().includes('spec')) {
+        testFiles++;
+      }
+
+      // More sensitive complexity check (signals per file)
       const complexitySignals = [
-        (file.content.match(/function /g) || []).length * 2,
-        (file.content.match(/if |else |switch |case /g) || []).length,
-        (file.content.match(/map\(|filter\(|reduce\(/g) || []).length,
-        file.lines > 300 ? 5 : 0
+        (file.content.match(/function\s+|=>/g) || []).length * 1.5, // Detect functions and arrows
+        (file.content.match(/if\s*\(|else|switch\s*\(|case\s+/g) || []).length * 2,
+        (file.content.match(/map\(|filter\(|reduce\(|forEach\(/g) || []).length * 1.2,
+        (file.content.match(/&&|\|\|/g) || []).length * 0.5,
+        file.lines > 100 ? (file.lines / 50) : 0
       ];
       
-      const totalComplexity = complexitySignals.reduce((a, b) => a + b, 0);
-      if (totalComplexity > 20) complexFiles++;
+      const fileComplexity = complexitySignals.reduce((a, b) => a + b, 0);
+      totalComplexity += fileComplexity;
     });
 
     const languages = Array.from(langMap.values()).map(l => ({
@@ -155,19 +164,26 @@ export class StaticAnalysisService {
       percent: Math.round((l.bytes / totalBytes) * 100)
     })).sort((a, b) => b.bytes - a.bytes);
 
+    // Weighted average complexity (scaled to 1-10)
+    const avgComplexity = Math.min(10, Math.max(1, Math.round((totalComplexity / (files.length || 1)) / 3)));
+    
+    // Estimate test coverage
+    const coverage = Math.min(100, Math.round((testFiles / (files.length || 1)) * 250));
+
     // Realistic quality score
     let score = 100;
-    score -= (complexFiles * 4);
+    score -= (avgComplexity * 2);
     score -= (duplicates.length * 2);
-    score -= (unusedExports.length * 1);
-    score -= (totalLines > 5000 ? 5 : 0);
+    score -= (unusedExports.length * 0.5);
+    score -= (totalLines > 5000 ? 10 : 0);
+    if (coverage < 10) score -= 10;
 
     return {
       files: files.length,
       lines: totalLines,
-      complexity: Math.min(10, Math.round((complexFiles / (files.length || 1)) * 15)),
-      qualityScore: Math.max(15, Math.round(score)),
-      coverage: 0,
+      complexity: avgComplexity,
+      qualityScore: Math.max(10, Math.round(score)),
+      coverage,
       languages
     };
   }

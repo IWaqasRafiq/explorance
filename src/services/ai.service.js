@@ -100,10 +100,13 @@ JSON ONLY:
   static getFallbackInsights(files, staticResults) {
     const extensions = [...new Set(files.map(f => f.extension))];
     return {
-      summary: "Comprehensive static analysis complete. To unlock deep architectural insights and automated refactoring suggestions, please ensure your local Ollama instance is running with the 'llama3' model.",
-      recommendations: ["Ensure your local Ollama instance is running for deeper insights.", "Check duplicate code blocks identified in the static analysis."],
-      techStack: extensions.map(ext => ext.replace('.', '').toUpperCase()),
-      architectureStyle: "Standard",
+      summary: "AI analysis is currently unavailable because no GEMINI_API_KEY was found in the environment. Please add your API key to enable deep architectural insights and automated refactoring suggestions.",
+      recommendations: [
+        "Add GEMINI_API_KEY to your environment variables to unlock AI-powered recommendations.",
+        "Ensure your local Ollama instance is running if you prefer local analysis in development."
+      ],
+      techStack: extensions.map(ext => ext.replace('.', '').toUpperCase()).filter(e => e !== 'OTHER'),
+      architectureStyle: "Detected from files",
       bugs: [],
       performance: []
     };
