@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAnalysisStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { RepoScoutModal } from "@/components/repo-scout-modal";
 
 const urlSchema = z.
 string().
@@ -29,6 +30,8 @@ export function AnalyzeForm({ onSubmitted }) {
   const isPolling = useAnalysisStore((s) => s.isPolling);
 
   const [url, setUrl] = useState("");
+  const [showScout, setShowScout] = useState(false);
+  const [activeUrl, setActiveUrl] = useState("");
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(null);
@@ -42,9 +45,12 @@ export function AnalyzeForm({ onSubmitted }) {
       return;
     }
     try {
+      setActiveUrl(parsed.data);
+      setShowScout(true);
       const jobId = await startAnalysis({ source: "url", repoUrl: parsed.data });
       onSubmitted?.(jobId);
     } catch {
+      setShowScout(false);
       toast({ title: "Failed to start", description: "Please try again.", variant: "destructive" });
     }
   };
@@ -143,6 +149,12 @@ export function AnalyzeForm({ onSubmitted }) {
 
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
       </CardContent>
+
+      <RepoScoutModal 
+        isOpen={showScout} 
+        onClose={() => setShowScout(false)} 
+        repoUrl={activeUrl} 
+      />
     </Card>);
 
 }

@@ -29,11 +29,14 @@ export default async function processor(job) {
     const files = await FileService.scanDirectory(tempDir);
 
     // 2. Parallel Processing (Faster performance)
-    await updateStatus(40, 'Processing Intelligence & Analysis...');
+    await updateStatus(40, 'Generating Intelligence & Analysis...');
     const chunks = ChunkingService.processFiles(files);
 
-    const isProd = !!process.env.GEMINI_API_KEY;
-    const CHUNK_LIMIT = isProd ? 50 : 150; // Drastically reduce limit in production to avoid Vercel timeouts
+    const isProd = process.env.NODE_ENV === 'production';
+    // Increase limit in production - with batching and Atlas search, 250 is safe and provides much better RAG quality
+    const CHUNK_LIMIT = isProd ? 250 : 500; 
+
+    console.log(`[PROCESSOR] Processing ${Math.min(chunks.length, CHUNK_LIMIT)} of ${chunks.length} chunks`);
 
     // Run report generation and embedding storage in parallel
     const [report] = await Promise.all([
@@ -42,7 +45,7 @@ export default async function processor(job) {
     ]);
 
     // 3. Finalizing
-    await updateStatus(90, 'Saving results...');
+    await updateStatus(95, 'Saving analysis results...');
     
     try {
       await AnalysisResult.create({
@@ -55,18 +58,18 @@ export default async function processor(job) {
         progress: 100, 
         stage: 'Done' 
       });
+      console.log(`[PROCESSOR] Analysis saved for project ${projectId}`);
     } catch (saveError) {
       console.error(`[PROCESSOR] Failed to save final results:`, saveError);
-      // Even if saving the full report fails, mark the project as done with what we have
       await Project.findByIdAndUpdate(projectId, { 
         status: 'completed', 
         progress: 100, 
         stage: 'Done (Partial)',
-        error: "Report saved but full analysis storage failed."
+        error: "Report generated but storage failed."
       });
     }
 
-    console.log(`[PROCESSOR] Project ${projectId} analyzed successfully.`);
+    console.log(`[PROCESSOR] Project ${projectId} pipeline completed successfully.`);
     return { success: true };
 
   } catch (error) {

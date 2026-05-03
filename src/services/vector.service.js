@@ -10,7 +10,7 @@ export class VectorService {
   static async isAvailable() {
     // In production (Vercel), Ollama is never available on localhost.
     // Skip the 2s timeout wait to save time.
-    if (process.env.GEMINI_API_KEY || process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production') {
       return false;
     }
 
@@ -29,10 +29,10 @@ export class VectorService {
    */
   static async generateEmbedding(text) {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const isProd = !!GEMINI_API_KEY;
+    const useGemini = process.env.NODE_ENV === 'production' && !!GEMINI_API_KEY;
 
     try {
-      if (isProd) {
+      if (useGemini) {
         // Production: Use Google Gemini Embedding API
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`, {
           method: 'POST',
@@ -46,11 +46,12 @@ export class VectorService {
         if (!response.ok) throw new Error(`Gemini Embedding Error: ${response.statusText}`);
         const data = await response.json();
         
-        if (!data.embedding || !data.embedding.values) {
+        if (data.embedding?.values) {
+          return data.embedding.values;
+        } else {
+          console.error("[VECTOR_SERVICE] Unexpected Gemini embedding response:", data);
           throw new Error("Invalid embedding response from Gemini");
         }
-        
-        return data.embedding.values;
       } else {
         // Development: Use Local Ollama
         const response = await fetch('http://localhost:11434/api/embeddings', {
@@ -60,26 +61,24 @@ export class VectorService {
             model: 'nomic-embed-text',
             prompt: text
           }),
-          signal: AbortSignal.timeout(5000) // 5 second timeout
+          signal: AbortSignal.timeout(30000)
         });
 
         if (!response.ok) throw new Error(`Ollama error: ${response.statusText}`);
         
         const data = await response.json();
-        return data.embedding;
+        if (data.embedding) return data.embedding;
+        throw new Error("No embedding returned from Ollama");
       }
     } catch (error) {
       console.error("[VECTOR_SERVICE] Failed to generate embedding:", error.message);
-      // Return a zero-vector as fallback to prevent the whole job from failing
+      // Return a zero-vector as fallback
       return new Array(768).fill(0); 
     }
   }
 
   /**
    * Stores chunks in MongoDB with embeddings
-   * @param {string} projectId 
-   * @param {Array<{content: string, metadata: Object}>} chunks 
-   * @param {Function} onProgress Optional callback for progress updates
    */
   static async storeChunks(projectId, chunks, onProgress) {
     if (!chunks || chunks.length === 0) return;
@@ -87,25 +86,10 @@ export class VectorService {
     console.log(`[VECTOR_SERVICE] Processing ${chunks.length} chunks for project ${projectId}...`);
     
     const available = await this.isAvailable();
-    const isProd = !!process.env.GEMINI_API_KEY;
-
-    // In production, we use Gemini. In dev, we use Ollama.
-    // If neither is available, we store without embeddings.
-    if (!available && !isProd) {
-      console.warn("[VECTOR_SERVICE] No embedding service available, storing raw chunks.");
-      const processedChunks = chunks.map(chunk => ({
-        projectId,
-        content: chunk.content,
-        embedding: [], 
-        metadata: chunk.metadata
-      }));
-      await CodeChunk.insertMany(processedChunks);
-      if (onProgress) await onProgress(90, 'Analysis complete...');
-      return;
-    }
+    const useGemini = process.env.NODE_ENV === 'production' && !!process.env.GEMINI_API_KEY;
 
     // Process in batches
-    const BATCH_SIZE = isProd ? 10 : 30; // Smaller batches for Gemini to avoid rate limits
+    const BATCH_SIZE = useGemini ? 10 : 30;
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
       
@@ -123,41 +107,62 @@ export class VectorService {
       await CodeChunk.insertMany(processedBatch);
       
       if (onProgress) {
-        // Map 40-90% range for vector storage
         const percent = Math.min(100, Math.round(((i + BATCH_SIZE) / chunks.length) * 100));
         const overallProgress = 40 + Math.round((percent / 100) * 50);
         await onProgress(overallProgress, `Vectorizing code (${percent}%)...`);
       }
-      
-      console.log(`[VECTOR_SERVICE] Vector Storage Progress: ${i + batch.length}/${chunks.length}`);
     }
 
     console.log(`[VECTOR_SERVICE] Successfully stored all chunks.`);
   }
 
   /**
-   * Performs a simple Cosine Similarity search locally (MVP version)
-   * Note: In production, you'd use MongoDB Atlas Vector Search ($vectorSearch)
+   * Performs vector search
+   * In production, this uses MongoDB Atlas Vector Search ($vectorSearch)
+   * In development, it falls back to local cosine similarity calculation
    */
   static async searchSimilar(projectId, queryText, limit = 5) {
     const queryEmbedding = await this.generateEmbedding(queryText);
     
-    // Fetch all chunks for the project (Fine for small/medium repos)
+    // Check if we should use Atlas Vector Search
+    const useAtlasVector = process.env.USE_MONGODB_VECTOR === 'true';
+
+    if (useAtlasVector) {
+      try {
+        console.log("[VECTOR_SERVICE] Using Atlas Vector Search...");
+        return await CodeChunk.aggregate([
+          {
+            "$vectorSearch": {
+              "index": "vector_index", // Name of your Atlas Vector Search index
+              "path": "embedding",
+              "queryVector": queryEmbedding,
+              "numCandidates": 100,
+              "limit": limit,
+              "filter": { "projectId": projectId }
+            }
+          }
+        ]);
+      } catch (error) {
+        console.error("[VECTOR_SERVICE] Atlas Vector Search failed, falling back to local search:", error.message);
+      }
+    }
+
+    // Local Fallback (MVP version)
+    console.log("[VECTOR_SERVICE] Using local similarity search (fallback)...");
     const allChunks = await CodeChunk.find({ projectId }).select('content metadata embedding');
     
-    // Calculate cosine similarity
     const results = allChunks.map(chunk => ({
       ...chunk.toObject(),
-      similarity: this.cosineSimilarity(queryEmbedding, chunk.embedding)
+      similarity: this.cosineSimilarity(queryEmbedding, chunk.embedding || [])
     }));
 
-    // Sort by similarity and return top results
     return results
-      .sort((a, b) => b.similarity - a.similarity)
+      .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
       .slice(0, limit);
   }
 
   static cosineSimilarity(vecA, vecB) {
+    if (!vecA || !vecB || vecA.length === 0 || vecB.length === 0 || vecA.length !== vecB.length) return 0;
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
@@ -166,6 +171,7 @@ export class VectorService {
       normA += vecA[i] * vecA[i];
       normB += vecB[i] * vecB[i];
     }
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
+    return magnitude === 0 ? 0 : dotProduct / magnitude;
   }
 }

@@ -10,6 +10,9 @@ export class AIService {
    * Checks if Ollama is running
    */
   static async isAvailable() {
+    if (process.env.NODE_ENV === 'production') {
+      return false;
+    }
     try {
       const response = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) });
       return response.ok;
@@ -25,9 +28,9 @@ export class AIService {
     console.log(`[AI_SERVICE] Generating architectural insights for ${files.length} files...`);
 
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const isProd = !!GEMINI_API_KEY;
+    const useGemini = process.env.NODE_ENV === 'production' && !!GEMINI_API_KEY;
 
-    if (!isProd) {
+    if (!useGemini) {
       const available = await this.isAvailable();
       if (!available) {
         console.warn("[AI_SERVICE] Ollama not available, returning basic insights.");
@@ -56,14 +59,15 @@ JSON Report Task:
 2. "recommendations": Top 3 refactoring tips.
 3. "techStack": List main technologies.
 4. "architectureStyle": (e.g., MVC, Component-based).
-5. "bugs": List 3 potential bugs {id, title, file, line, description, severity}.
-6. "performance": List 3 bottlenecks {id, title, file, line, description, severity}.
+5. "purpose": 1-sentence technical purpose of the project.
+6. "bugs": List 3 potential bugs {id, title, file, line, description, severity}.
+7. "performance": List 3 bottlenecks {id, title, file, line, description, severity}.
 
 JSON ONLY:
 `;
 
     try {
-      if (isProd) {
+      if (useGemini) {
         // Production: Use Google Gemini API
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
           method: 'POST',
@@ -77,8 +81,14 @@ JSON ONLY:
 
         if (!response.ok) throw new Error(`Gemini Error: ${response.statusText}`);
         const data = await response.json();
-        const content = data.candidates[0].content.parts[0].text;
-        return JSON.parse(content);
+        
+        if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+          const content = data.candidates[0].content.parts[0].text;
+          return JSON.parse(content);
+        } else {
+          console.error("[AI_SERVICE] Unexpected Gemini response:", data);
+          throw new Error("Invalid Gemini response format");
+        }
       } else {
         // Development: Use Local Ollama
         const response = await client.chat.completions.create({
@@ -86,7 +96,7 @@ JSON ONLY:
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.1,
           response_format: { type: 'json_object' }
-        }, { timeout: 30000 });
+        }, { timeout: 120000 }); // 2 minute timeout for local Llama3
 
         const content = response.choices[0].message.content;
         const jsonString = content.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -100,16 +110,22 @@ JSON ONLY:
 
   static getFallbackInsights(files, staticResults) {
     const extensions = [...new Set(files.map(f => f.extension))];
+    const isMissingKey = !process.env.GEMINI_API_KEY && process.env.NODE_ENV === 'production';
+    
     return {
-      summary: "AI analysis is currently unavailable because no GEMINI_API_KEY was found in the environment. Please add your API key to enable deep architectural insights and automated refactoring suggestions.",
+      summary: isMissingKey 
+        ? "AI analysis is currently unavailable because no GEMINI_API_KEY was found in the environment."
+        : "AI analysis timed out or failed. Showing results from static analysis.",
+      purpose: staticResults.purpose || "Project detected from file structure.",
       recommendations: [
-        "Add GEMINI_API_KEY to your environment variables to unlock AI-powered recommendations.",
-        "Ensure your local Ollama instance is running if you prefer local analysis in development."
+        "Check your environment variables for GEMINI_API_KEY.",
+        "Ensure Ollama is running if in development mode.",
+        "Review static analysis results below for immediate improvements."
       ],
       techStack: extensions.map(ext => ext.replace('.', '').toUpperCase()).filter(e => e !== 'OTHER'),
-      architectureStyle: "Detected from files",
-      bugs: [],
-      performance: []
+      architectureStyle: "Detected from file structure",
+      bugs: staticResults.bugs || [],
+      performance: staticResults.performance || []
     };
   }
 }

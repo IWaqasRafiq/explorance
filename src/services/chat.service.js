@@ -36,23 +36,53 @@ CONTEXT:
 ${contextString}
 `;
 
-    console.log(`[CHAT_SERVICE] Sending request to local LLM...`);
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const useGemini = process.env.NODE_ENV === 'production' && !!GEMINI_API_KEY;
 
-    // 4. Generate response using Local LLM
+    console.log(`[CHAT_SERVICE] Sending request to ${useGemini ? 'Gemini' : 'local LLM'}...`);
+
     try {
-      const response = await client.chat.completions.create({
-        model: 'llama3',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: query }
-        ],
-        temperature: 0.2, // Keep it focused on the facts
-      });
+      if (useGemini) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ 
+              role: 'user', 
+              parts: [{ text: systemPrompt + "\n\nUSER QUESTION: " + query }] 
+            }],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 1000,
+            }
+          }),
+          signal: AbortSignal.timeout(30000)
+        });
 
-      return response.choices[0].message.content;
+        if (!response.ok) throw new Error(`Gemini Error: ${response.statusText}`);
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+          return data.candidates[0].content.parts[0].text;
+        } else {
+          console.error("[CHAT_SERVICE] Unexpected Gemini response:", data);
+          throw new Error("Invalid Gemini response format");
+        }
+      } else {
+        const response = await client.chat.completions.create({
+          model: 'llama3',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: query }
+          ],
+          temperature: 0.2,
+        }, { timeout: 60000 });
+
+        return response.choices[0].message.content;
+      }
     } catch (error) {
       console.error("[CHAT_SERVICE] LLM Error:", error.message);
-      throw new Error(`Failed to get response from local LLM: ${error.message}`);
+      return `I encountered an error while processing your request: ${error.message}. Please try again later.`;
     }
   }
 }

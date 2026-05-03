@@ -16,29 +16,35 @@
 
 
 
+const API_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY;
+
 export const apiClient = {
   async analyze(req) {
     const res = await fetch('/api/analyze', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-api-key': API_KEY
+      },
       body: JSON.stringify(req)
     });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to analyze repository');
     }
-    return res.json(); // { jobId, projectId, message }
+    return res.json();
   },
 
   async status(jobId) {
-    const res = await fetch(`/api/status/${jobId}`);
+    const res = await fetch(`/api/status/${jobId}`, {
+      headers: { 'x-api-key': API_KEY }
+    });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to fetch status');
     }
     const data = await res.json();
     
-    // Use backend stage if available, otherwise fallback to progress-based mapping
     let stage = data.stage;
     if (!stage) {
       if (data.progress < 20) stage = "Cloning repository";
@@ -54,28 +60,29 @@ export const apiClient = {
 
     return { 
       jobId: data.jobId, 
-      status: data.status, // "pending", "processing", "completed", "failed"
+      status: data.status, 
       progress: data.progress, 
       stage, 
-      reportId: data.projectId, // We use projectId to fetch the report
+      reportId: data.projectId, 
       error: data.error 
     };
   },
 
   async report(id) {
-    const res = await fetch(`/api/report/${id}`);
+    const res = await fetch(`/api/report/${id}`, {
+      headers: { 'x-api-key': API_KEY }
+    });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to fetch report');
     }
-    const data = await res.json(); // { project, report }
+    const data = await res.json();
     
-    // Inject ID and Repo into the AI generated reportData
     return {
       id: data.project._id,
       repo: data.project.repoUrl,
       analyzedAt: data.report.createdAt,
-      ...data.report.reportData // The exact JSON structure from AI
+      ...data.report.reportData
     };
   }
 };

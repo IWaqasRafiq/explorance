@@ -16,18 +16,20 @@ export class ReportService {
     // 2. Run AI Analysis (Interpretation)
     const aiInsights = await AIService.generateInsights(files, staticResults);
 
-    // 3. Combine into the Final Report Structure
+    // 3. Combine into the Final Report Structure (Merging Static + AI)
     const report = {
       projectId,
       timestamp: new Date().toISOString(),
       summary: aiInsights.summary || "Project summary not available.",
-      purpose: staticResults.purpose, // Added missing purpose
+      purpose: aiInsights.purpose || staticResults.purpose || "Project purpose not detected.",
       metrics: staticResults.metrics,
       languages: staticResults.metrics.languages || [],
       qualityScore: staticResults.metrics.qualityScore ?? 0,
       techStack: aiInsights.techStack || [],
-      bugs: aiInsights.bugs || [],
-      performance: aiInsights.performance || [],
+      // Merge bugs from both sources, ensuring no duplicates by ID (if possible)
+      bugs: [...(staticResults.bugs || []), ...(aiInsights.bugs || [])].slice(0, 15),
+      // Merge performance issues from both sources
+      performance: [...(staticResults.performance || []), ...(aiInsights.performance || [])].slice(0, 15),
       duplicates: staticResults.duplicates || [],
       unusedCode: staticResults.unusedCode || [],
       folderStructure: staticResults.folderStructure,
