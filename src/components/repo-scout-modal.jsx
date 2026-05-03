@@ -18,12 +18,13 @@ export function RepoScoutModal({ isOpen, onClose, repoUrl }) {
 
   const fetchScoutData = async (url) => {
     try {
+      const headers = { "Content-Type": "application/json" };
+      const apiKey = process.env.NEXT_PUBLIC_ADMIN_API_KEY;
+      if (apiKey) headers["x-api-key"] = apiKey;
+
       const res = await fetch("/api/scout", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY
-        },
+        headers,
         body: JSON.stringify({ repoUrl: url }),
       });
       if (res.ok) {

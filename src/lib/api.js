@@ -20,12 +20,12 @@ const API_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY;
 
 export const apiClient = {
   async analyze(req) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (API_KEY) headers['x-api-key'] = API_KEY;
+
     const res = await fetch('/api/analyze', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY
-      },
+      headers,
       body: JSON.stringify(req)
     });
     if (!res.ok) {
@@ -36,9 +36,10 @@ export const apiClient = {
   },
 
   async status(jobId) {
-    const res = await fetch(`/api/status/${jobId}`, {
-      headers: { 'x-api-key': API_KEY }
-    });
+    const headers = {};
+    if (API_KEY) headers['x-api-key'] = API_KEY;
+
+    const res = await fetch(`/api/status/${jobId}`, { headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to fetch status');
@@ -69,9 +70,10 @@ export const apiClient = {
   },
 
   async report(id) {
-    const res = await fetch(`/api/report/${id}`, {
-      headers: { 'x-api-key': API_KEY }
-    });
+    const headers = {};
+    if (API_KEY) headers['x-api-key'] = API_KEY;
+
+    const res = await fetch(`/api/report/${id}`, { headers });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to fetch report');

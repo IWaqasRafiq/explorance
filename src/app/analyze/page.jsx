@@ -17,9 +17,11 @@ const Analyze = () => {
   useEffect(() => {
     const fetchRecent = async () => {
       try {
-        const res = await fetch("/api/recent", {
-          headers: { "x-api-key": process.env.NEXT_PUBLIC_ADMIN_API_KEY }
-        });
+        const headers = {};
+        const apiKey = process.env.NEXT_PUBLIC_ADMIN_API_KEY;
+        if (apiKey) headers["x-api-key"] = apiKey;
+
+        const res = await fetch("/api/recent", { headers });
         if (res.ok) {
           const data = await res.json();
           setRecentProjects(data);
