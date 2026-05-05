@@ -34,7 +34,7 @@ const Analyze = () => {
   }, [isPolling]); // Refresh when a new analysis completes (isPolling changes from true to false)
 
   useEffect(() => {
-    document.title = "Analyze · AI GitHub Explorer";
+    document.title = "Analyze · Explorance";
   }, []);
 
   useEffect(() => {

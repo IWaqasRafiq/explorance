@@ -5,6 +5,11 @@ const client = new OpenAI({
   apiKey: 'ollama',
 });
 
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export class AIService {
   /**
    * Checks if Ollama is running
@@ -28,7 +33,10 @@ export class AIService {
     console.log(`[AI_SERVICE] Generating architectural insights for ${files.length} files...`);
 
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const useGemini = process.env.NODE_ENV === 'production' && !!GEMINI_API_KEY;
+    const useGemini = !!GEMINI_API_KEY;
+    const maxFilesInPrompt = toPositiveInt(process.env.AI_PROMPT_MAX_FILES, 12);
+    const geminiTimeoutMs = toPositiveInt(process.env.AI_GEMINI_TIMEOUT_MS, 20000);
+    const ollamaTimeoutMs = toPositiveInt(process.env.AI_OLLAMA_TIMEOUT_MS, 90000);
 
     if (!useGemini) {
       const available = await this.isAvailable();
@@ -41,12 +49,12 @@ export class AIService {
     // Prepare a condensed summary of the most important files
     const fileList = files
       .sort((a, b) => b.lines - a.lines)
-      .slice(0, 20)
+      .slice(0, maxFilesInPrompt)
       .map(f => `- ${f.path} (${f.lines} lines)`)
       .join('\n');
     
     const prompt = `
-Context: ${files.length} total files. Top 20:
+Context: ${files.length} total files. Top ${maxFilesInPrompt}:
 ${fileList}
 
 Stats:
@@ -68,7 +76,7 @@ JSON ONLY:
 
     try {
       if (useGemini) {
-        // Production: Use Google Gemini API
+        // Use Google Gemini API whenever a key is available
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -76,7 +84,7 @@ JSON ONLY:
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { response_mime_type: "application/json" }
           }),
-          signal: AbortSignal.timeout(30000) // 30 second timeout
+          signal: AbortSignal.timeout(geminiTimeoutMs)
         });
 
         if (!response.ok) throw new Error(`Gemini Error: ${response.statusText}`);
@@ -90,13 +98,13 @@ JSON ONLY:
           throw new Error("Invalid Gemini response format");
         }
       } else {
-        // Development: Use Local Ollama
+        // Fallback to local Ollama only when Gemini is unavailable
         const response = await client.chat.completions.create({
           model: 'llama3',
           messages: [{ role: 'user', content: prompt }],
           temperature: 0.1,
           response_format: { type: 'json_object' }
-        }, { timeout: 120000 }); // 2 minute timeout for local Llama3
+        }, { timeout: ollamaTimeoutMs });
 
         const content = response.choices[0].message.content;
         const jsonString = content.replace(/```json/g, '').replace(/```/g, '').trim();

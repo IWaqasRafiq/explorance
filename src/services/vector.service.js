@@ -1,5 +1,10 @@
 import CodeChunk from '../models/CodeChunk.js';
 
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export class VectorService {
   /**
    * Checks if Ollama is running and has the required model
@@ -29,7 +34,9 @@ export class VectorService {
    */
   static async generateEmbedding(text) {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const useGemini = process.env.NODE_ENV === 'production' && !!GEMINI_API_KEY;
+    const useGemini = !!GEMINI_API_KEY;
+    const geminiTimeoutMs = toPositiveInt(process.env.EMBEDDING_GEMINI_TIMEOUT_MS, 10000);
+    const ollamaTimeoutMs = toPositiveInt(process.env.EMBEDDING_OLLAMA_TIMEOUT_MS, 30000);
 
     try {
       if (useGemini) {
@@ -40,7 +47,7 @@ export class VectorService {
           body: JSON.stringify({
             content: { parts: [{ text }] }
           }),
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(geminiTimeoutMs)
         });
 
         if (!response.ok) throw new Error(`Gemini Embedding Error: ${response.statusText}`);
@@ -61,7 +68,7 @@ export class VectorService {
             model: 'nomic-embed-text',
             prompt: text
           }),
-          signal: AbortSignal.timeout(30000)
+          signal: AbortSignal.timeout(ollamaTimeoutMs)
         });
 
         if (!response.ok) throw new Error(`Ollama error: ${response.statusText}`);
@@ -84,12 +91,11 @@ export class VectorService {
     if (!chunks || chunks.length === 0) return;
     
     console.log(`[VECTOR_SERVICE] Processing ${chunks.length} chunks for project ${projectId}...`);
-    
-    const available = await this.isAvailable();
-    const useGemini = process.env.NODE_ENV === 'production' && !!process.env.GEMINI_API_KEY;
+    const useGemini = !!process.env.GEMINI_API_KEY;
+    const defaultBatchSize = useGemini ? 12 : 30;
+    const BATCH_SIZE = toPositiveInt(process.env.EMBEDDING_BATCH_SIZE, defaultBatchSize);
 
     // Process in batches
-    const BATCH_SIZE = useGemini ? 10 : 30;
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
       

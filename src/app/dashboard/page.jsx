@@ -24,7 +24,7 @@ const Dashboard = () => {
   const { report, status, error } = useAnalysisStore();
 
   useEffect(() => {
-    document.title = "Dashboard · AI GitHub Explorer";
+    document.title = "Dashboard · Explorance";
   }, []);
 
   if (!report) {

@@ -7,6 +7,11 @@ import { connectDB } from '../lib/db.js';
 import Project from '../models/Project.js';
 import AnalysisResult from '../models/AnalysisResult.js';
 
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 export default async function processor(job) {
   const { projectId, repoUrl } = job.data;
   let tempDir = null;
@@ -33,16 +38,29 @@ export default async function processor(job) {
     const chunks = ChunkingService.processFiles(files);
 
     const isProd = process.env.NODE_ENV === 'production';
-    // Increase limit in production - with batching and Atlas search, 250 is safe and provides much better RAG quality
-    const CHUNK_LIMIT = isProd ? 250 : 500; 
+    const defaultChunkLimit = isProd ? 200 : 120;
+    const CHUNK_LIMIT = toPositiveInt(process.env.ANALYSIS_CHUNK_LIMIT, defaultChunkLimit);
+    const BLOCK_ON_VECTORIZATION = process.env.BLOCK_ON_VECTORIZATION === 'true';
 
     console.log(`[PROCESSOR] Processing ${Math.min(chunks.length, CHUNK_LIMIT)} of ${chunks.length} chunks`);
 
-    // Run report generation and embedding storage in parallel
-    const [report] = await Promise.all([
-      ReportService.generateFullReport(projectId, files),
-      VectorService.storeChunks(projectId, chunks.slice(0, CHUNK_LIMIT), updateStatus) 
-    ]);
+    const chunksForEmbeddings = chunks.slice(0, CHUNK_LIMIT);
+    const report = await ReportService.generateFullReport(projectId, files);
+
+    const vectorizationTask = VectorService.storeChunks(projectId, chunksForEmbeddings, updateStatus)
+      .then(() => {
+        console.log(`[PROCESSOR] Vectorization complete for project ${projectId}`);
+      })
+      .catch((vectorError) => {
+        console.error(`[PROCESSOR] Vectorization failed for project ${projectId}:`, vectorError.message);
+      });
+
+    if (BLOCK_ON_VECTORIZATION) {
+      await vectorizationTask;
+    } else {
+      // Keep report latency low by not blocking on embeddings.
+      void vectorizationTask;
+    }
 
     // 3. Finalizing
     await updateStatus(95, 'Saving analysis results...');
