@@ -7,20 +7,33 @@ export class ReportService {
    * @param {string} projectId 
    * @param {Array} files 
    */
-  static async generateFullReport(projectId, files) {
+  static async generateFullReport(projectId, files, options = {}) {
+    const { includeAI = true, mode = 'full', totalFiles = files.length } = options;
     console.log(`[REPORT_SERVICE] Creating master report for project ${projectId}...`);
 
     // 1. Run Static Analysis (Facts)
     const staticResults = StaticAnalysisService.analyze(files);
     
     // 2. Run AI Analysis (Interpretation)
-    const aiInsights = await AIService.generateInsights(files, staticResults);
+    let aiInsights = {
+      summary: '',
+      purpose: '',
+      techStack: [],
+      bugs: [],
+      performance: [],
+      architectureStyle: 'Modular',
+      recommendations: []
+    };
+
+    if (includeAI) {
+      aiInsights = await AIService.generateInsights(files, staticResults);
+    }
 
     // 3. Combine into the Final Report Structure (Merging Static + AI)
     const report = {
       projectId,
       timestamp: new Date().toISOString(),
-      summary: aiInsights.summary || "Project summary not available.",
+      summary: aiInsights.summary || "Static analysis summary generated. AI insights are unavailable for this run.",
       purpose: aiInsights.purpose || staticResults.purpose || "Project purpose not detected.",
       metrics: staticResults.metrics,
       languages: staticResults.metrics.languages || [],
@@ -38,6 +51,13 @@ export class ReportService {
       architecture: {
         style: aiInsights.architectureStyle || "Modular",
         insights: aiInsights.recommendations || []
+      },
+      partial: mode !== 'full',
+      analysisScope: {
+        mode,
+        analyzedFiles: files.length,
+        totalFiles,
+        hasBackgroundEnrichment: mode !== 'full'
       }
     };
 

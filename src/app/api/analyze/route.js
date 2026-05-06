@@ -38,6 +38,12 @@ export async function POST(req) {
 
   } catch (error) {
     console.error('Error in /api/analyze:', error);
+    const msg = String(error?.message || '');
+    if (msg.includes('ENOTFOUND') || msg.includes('MongoServerSelectionError')) {
+      return NextResponse.json({
+        error: 'Database connection failed. Check your network/VPN or MongoDB URI, then retry.'
+      }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

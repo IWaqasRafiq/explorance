@@ -25,6 +25,7 @@ export async function POST(req) {
     const fileList = Array.isArray(files) ? files.map(f => f.name).join(', ') : '';
 
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const geminiModel = process.env.GEMINI_MODEL_TEXT || 'gemini-2.0-flash';
     
     const prompt = `
 Role: Repo Scout.
@@ -63,7 +64,7 @@ JSON ONLY.
     let report;
     if (GEMINI_API_KEY) {
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${GEMINI_API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

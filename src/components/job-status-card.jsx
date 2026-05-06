@@ -29,14 +29,15 @@ export function JobStatusCard({ status, error }) {
   if (!status) return null;
 
   const done = status.status === "completed";
+  const partialPreview = status.status === "partial_preview";
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-      <Card>
+      <Card className={partialPreview ? "border-amber-500/40" : ""}>
         <CardContent className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+              {done || partialPreview ? <CheckCircle2 className={`h-4 w-4 ${partialPreview ? "text-amber-500" : "text-success"}`} /> : <Loader2 className="h-4 w-4 animate-spin" />}
               <p className="text-sm font-medium">{done ? "Completed" : status.stage}</p>
             </div>
             <span className="font-mono text-xs text-muted-foreground">{status.progress}%</span>

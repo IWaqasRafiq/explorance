@@ -84,6 +84,17 @@ const ReportPage = () => {
           <p className="mt-2 max-w-2xl text-muted-foreground">Detailed insights from static analysis and AI review.</p>
         </header>
 
+        {report.partial && (
+          <Card className="border-amber-500/40">
+            <CardContent className="space-y-1 p-4">
+              <p className="text-sm font-medium">Partial report is ready</p>
+              <p className="text-sm text-muted-foreground">
+                This repository is large. Showing an initial report from {report?.analysisScope?.analyzedFiles ?? 0} of {report?.analysisScope?.totalFiles ?? 0} files while enrichment continues in the background.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         <StatGrid
           stats={[
             { label: "Files", value: report?.metrics?.files ?? 0 },

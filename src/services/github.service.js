@@ -5,6 +5,15 @@ import os from 'os';
 import AdmZip from 'adm-zip';
 
 export class GithubService {
+  static getZipLimits() {
+    return {
+      timeoutMs: Number.parseInt(process.env.REPO_DOWNLOAD_TIMEOUT_MS || '120000', 10),
+      maxZipBytes: Number.parseInt(process.env.MAX_REPO_ZIP_BYTES || String(80 * 1024 * 1024), 10),
+      maxUnzippedBytes: Number.parseInt(process.env.MAX_REPO_UNZIPPED_BYTES || String(300 * 1024 * 1024), 10),
+      maxZipEntries: Number.parseInt(process.env.MAX_REPO_ZIP_ENTRIES || '50000', 10)
+    };
+  }
+
   /**
    * Clones a repository into a temporary directory
    * @param {string} repoUrl 
@@ -96,25 +105,51 @@ export class GithubService {
     
     const [_, owner, repo] = match;
     const zipUrl = `https://github.com/${owner}/${repo}/zipball/HEAD`;
+    const { timeoutMs, maxZipBytes, maxUnzippedBytes, maxZipEntries } = this.getZipLimits();
     
     console.log(`[GITHUB_SERVICE] Downloading ZIP from ${zipUrl}`);
-    
-    const response = await fetch(zipUrl);
+
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), timeoutMs);
+    const response = await fetch(zipUrl, { signal: abortController.signal });
+
     if (!response.ok) {
       throw new Error(`Failed to download repository: ${response.statusText} (${response.status})`);
     }
+
+    const contentLength = Number.parseInt(response.headers.get('content-length') || '0', 10);
+    if (Number.isFinite(contentLength) && contentLength > maxZipBytes) {
+      throw new Error(`Repository ZIP is too large (${Math.round(contentLength / 1024 / 1024)}MB). Limit is ${Math.round(maxZipBytes / 1024 / 1024)}MB.`);
+    }
     
-    const arrayBuffer = await response.arrayBuffer();
+    let arrayBuffer;
+    try {
+      arrayBuffer = await response.arrayBuffer();
+    } finally {
+      clearTimeout(timeout);
+    }
     const buffer = Buffer.from(arrayBuffer);
+    if (buffer.length > maxZipBytes) {
+      throw new Error(`Repository ZIP exceeded size limit (${Math.round(buffer.length / 1024 / 1024)}MB > ${Math.round(maxZipBytes / 1024 / 1024)}MB).`);
+    }
     
     const zip = new AdmZip(buffer);
+    const entries = zip.getEntries();
+    if (entries.length > maxZipEntries) {
+      throw new Error(`Repository contains too many archive entries (${entries.length}).`);
+    }
+    const uncompressedSize = entries.reduce((sum, entry) => sum + (entry.header?.size || 0), 0);
+    if (uncompressedSize > maxUnzippedBytes) {
+      throw new Error(`Repository uncompressed size is too large (${Math.round(uncompressedSize / 1024 / 1024)}MB).`);
+    }
+
     zip.extractAllTo(tempDir, true);
     
     // GitHub's zipball puts everything inside a subfolder (owner-repo-hash)
     // We need to move files up one level to keep the structure consistent
-    const entries = await fs.readdir(tempDir);
-    if (entries.length === 1) {
-      const entryPath = path.join(tempDir, entries[0]);
+    const extractedEntries = await fs.readdir(tempDir);
+    if (extractedEntries.length === 1) {
+      const entryPath = path.join(tempDir, extractedEntries[0]);
       if ((await fs.stat(entryPath)).isDirectory()) {
         const subDir = entryPath;
         const files = await fs.readdir(subDir);

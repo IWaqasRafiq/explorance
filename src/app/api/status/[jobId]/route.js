@@ -31,9 +31,15 @@ export async function GET(req, { params }) {
       progress: project.progress,
       stage: project.stage,
       error: project.error,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
     });
   } catch (error) {
     console.error('Error in /api/status:', error);
+    const msg = String(error?.message || '');
+    if (msg.includes('ENOTFOUND') || msg.includes('MongoServerSelectionError')) {
+      return NextResponse.json({ error: 'Database temporarily unavailable.' }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

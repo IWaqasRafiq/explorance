@@ -8,11 +8,13 @@ import { AppLayout } from "@/components/app-layout";
 import { AnalyzeForm } from "@/components/analyze-form";
 import { JobStatusCard } from "@/components/job-status-card";
 import { useAnalysisStore } from "@/lib/store";
+import { Card, CardContent } from "@/components/ui/card";
 
 const Analyze = () => {
   const router = useRouter();
-  const { status, error, report, reset, isPolling } = useAnalysisStore();
+  const { status, error, report, reset, isPolling, quickScout } = useAnalysisStore();
   const [recentProjects, setRecentProjects] = useState([]);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
 
   useEffect(() => {
     const fetchRecent = async () => {
@@ -38,12 +40,21 @@ const Analyze = () => {
   }, []);
 
   useEffect(() => {
-    if (report) {
+    if (hasSubmitted && report) {
       const id = report.id;
       const t = setTimeout(() => router.push(`/report/${id}`), 600);
       return () => clearTimeout(t);
     }
-  }, [report, router]);
+  }, [hasSubmitted, report, router]);
+
+  const handleSubmitted = () => {
+    setHasSubmitted(true);
+  };
+
+  const handleReset = () => {
+    setHasSubmitted(false);
+    reset();
+  };
 
   return (
     <AppLayout>
@@ -56,14 +67,38 @@ const Analyze = () => {
         </motion.div>
 
         <div className="mt-8">
-          <AnalyzeForm />
+          <AnalyzeForm onSubmitted={handleSubmitted} />
         </div>
 
         <div className="mt-6 space-y-3">
           <JobStatusCard status={status} error={error} />
+          {status?.status === "partial_preview" && quickScout && (
+            <Card className="border-amber-500/40">
+              <CardContent className="space-y-2 p-4">
+                <p className="text-sm font-medium">Quick partial preview</p>
+                <p className="text-sm text-muted-foreground">{quickScout.pitch}</p>
+                <div className="flex flex-wrap gap-1">
+                  {(quickScout.stack || []).slice(0, 6).map((s) => (
+                    <span key={s} className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium">{s}</span>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Background analysis is still running. Full report opens automatically when ready.</p>
+                {status?.reportId && (
+                  <div className="pt-1">
+                    <Link
+                      href={`/report/${status.reportId}`}
+                      className="inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
+                    >
+                      View latest report
+                    </Link>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           {(status || error) && (
             <button
-              onClick={reset}
+              onClick={handleReset}
               className="font-mono text-xs text-muted-foreground underline-offset-4 hover:underline"
             >
               reset

@@ -14,6 +14,10 @@ export async function GET() {
     return NextResponse.json(projects);
   } catch (error) {
     console.error('Error in /api/recent:', error);
+    const msg = String(error?.message || '');
+    if (msg.includes('ENOTFOUND') || msg.includes('MongoServerSelectionError')) {
+      return NextResponse.json({ error: 'Database temporarily unavailable.' }, { status: 503 });
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

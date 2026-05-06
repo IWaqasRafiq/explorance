@@ -65,8 +65,25 @@ export const apiClient = {
       progress: data.progress, 
       stage, 
       reportId: data.projectId, 
-      error: data.error 
+      error: data.error,
+      updatedAt: data.updatedAt,
+      createdAt: data.createdAt
     };
+  },
+
+  async scout(repoUrl) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (API_KEY) headers['x-api-key'] = API_KEY;
+    const res = await fetch('/api/scout', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ repoUrl })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to fetch scout preview');
+    }
+    return res.json();
   },
 
   async report(id) {
@@ -74,6 +91,13 @@ export const apiClient = {
     if (API_KEY) headers['x-api-key'] = API_KEY;
 
     const res = await fetch(`/api/report/${id}`, { headers });
+
+    // 202 = analysis running but no report data written yet
+    if (res.status === 202) {
+      const err = await res.json();
+      throw new Error(err.error || 'Analysis still in progress');
+    }
+
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error || 'Failed to fetch report');
@@ -84,6 +108,7 @@ export const apiClient = {
       id: data.project._id,
       repo: data.project.repoUrl,
       analyzedAt: data.report.createdAt,
+      partial: data.partial ?? false,   // ← pass partial flag to the UI
       ...data.report.reportData
     };
   }
