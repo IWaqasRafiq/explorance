@@ -60,27 +60,34 @@ export class StaticAnalysisService {
   static detectBugs(files) {
     const bugs = [];
     const patterns = [
-      { regex: /console\.log\(/g, title: 'Console Log in Production', severity: 'low', desc: 'Debug logging found. Should be removed for production.' },
-      { regex: /eval\(/g, title: 'Security Risk: eval()', severity: 'critical', desc: 'Use of eval() is a major security vulnerability.' },
-      { regex: /innerHTML\s*=/g, title: 'Security Risk: innerHTML', severity: 'high', desc: 'Potential XSS vulnerability. Use textContent instead.' },
-      { regex: /TODO|FIXME/gi, title: 'Technical Debt', severity: 'medium', desc: 'Unresolved TODO or FIXME comment found.' },
-      { regex: /==\s*null|==\s*undefined/g, title: 'Loose Equality Check', severity: 'low', desc: 'Prefer strict equality (===) over loose equality (==).' },
-      { regex: /\bvar\b/g, title: 'Legacy Variable Declaration', severity: 'low', desc: 'Use let or const instead of var.' },
-      { regex: /document\.write\(/g, title: 'Security Risk: document.write', severity: 'high', desc: 'document.write is a security risk and bad for performance.' }
+      { regex: /console\.log\(/g, title: 'Console Log in Production', severity: 'low', confidence: 'high', desc: 'Debug logging found. Should be removed for production.', extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+      { regex: /eval\(/g, title: 'Security Risk: eval()', severity: 'critical', confidence: 'high', desc: 'Use of eval() is a major security vulnerability.', extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+      { regex: /innerHTML\s*=/g, title: 'Security Risk: innerHTML', severity: 'high', confidence: 'medium', desc: 'Potential XSS vulnerability. Use textContent instead.', extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+      { regex: /TODO|FIXME/gi, title: 'Technical Debt', severity: 'medium', confidence: 'high', desc: 'Unresolved TODO or FIXME comment found.' },
+      { regex: /==\s*null|==\s*undefined/g, title: 'Loose Equality Check', severity: 'low', confidence: 'medium', desc: 'Prefer strict equality (===) over loose equality (==).', extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+      { regex: /(^|[;{\s])var\s+[A-Za-z_$][\w$]*/gm, title: 'Legacy Variable Declaration', severity: 'low', confidence: 'high', desc: 'Use let or const instead of var.', extensions: ['.js', '.jsx', '.ts', '.tsx'] },
+      { regex: /document\.write\(/g, title: 'Security Risk: document.write', severity: 'high', confidence: 'high', desc: 'document.write is a security risk and bad for performance.', extensions: ['.js', '.jsx', '.ts', '.tsx'] }
     ];
+    const seen = new Set();
 
     for (const file of files) {
+      if (!this.isAnalyzableSourceFile(file)) continue;
       for (const p of patterns) {
+        if (!this.patternSupportsFile(p, file)) continue;
         const matches = file.content.matchAll(p.regex);
         for (const m of matches) {
           const line = file.content.substring(0, m.index).split('\n').length;
+          const signature = `${p.title}|${file.path}|${line}`;
+          if (seen.has(signature)) continue;
+          seen.add(signature);
           bugs.push({
             id: Math.random().toString(36).substring(7),
             title: p.title,
             file: file.path,
             line,
             description: p.desc,
-            severity: p.severity
+            severity: p.severity,
+            confidence: p.confidence || 'medium'
           });
           if (bugs.length > 20) break;
         }
@@ -96,25 +103,31 @@ export class StaticAnalysisService {
   static detectPerformance(files) {
     const issues = [];
     const patterns = [
-      { regex: /useEffect\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{[^}]*\},\s*\[\s*\]\s*\)/g, title: 'Empty Dependency Array', severity: 'low', desc: 'Ensure this effect only needs to run once. Otherwise, specify dependencies.' },
-      { regex: /\.map\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{[^}]*\}\s*\)/g, title: 'Inline Mapping', severity: 'low', desc: 'Consider moving complex mapping logic outside of the render cycle.' },
-      { regex: /@import/g, title: 'CSS Import', severity: 'medium', desc: 'Using @import in CSS can delay page rendering.' },
-      { regex: /document\.querySelector/g, title: 'DOM Querying', severity: 'low', desc: 'Frequent DOM querying can be slow. Consider caching references.' },
-      { regex: /for\s*\(\s*let\s+i\s*=\s*0;\s*i\s*<\s*\w+\.length;\s*i\+\+\s*\)/g, title: 'Non-cached Length in Loop', severity: 'low', desc: 'Accessing length on every iteration is slightly slower than caching it.' }
+      { regex: /useEffect\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{[^}]{80,}\},\s*\[\s*\]\s*\)/g, title: 'Heavy useEffect with Empty Dependency Array', severity: 'low', confidence: 'low', desc: 'Large effect body runs once on mount. Verify this is intentional.', extensions: ['.jsx', '.tsx'] },
+      { regex: /\.map\(\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{[^}]{120,}\}\s*\)/g, title: 'Heavy Inline Mapping', severity: 'low', confidence: 'low', desc: 'Complex mapping logic in render paths can hurt readability and performance.', extensions: ['.jsx', '.tsx'] },
+      { regex: /@import/g, title: 'CSS Import', severity: 'medium', confidence: 'medium', desc: 'Using @import in CSS can delay page rendering.', extensions: ['.css', '.scss', '.sass'] },
+      { regex: /document\.querySelector/g, title: 'DOM Querying', severity: 'low', confidence: 'medium', desc: 'Repeated DOM querying can be slow. Prefer refs or cached selectors.', extensions: ['.js', '.jsx', '.ts', '.tsx'] }
     ];
+    const seen = new Set();
 
     for (const file of files) {
+      if (!this.isAnalyzableSourceFile(file)) continue;
       for (const p of patterns) {
+        if (!this.patternSupportsFile(p, file)) continue;
         const matches = file.content.matchAll(p.regex);
         for (const m of matches) {
           const line = file.content.substring(0, m.index).split('\n').length;
+          const signature = `${p.title}|${file.path}|${line}`;
+          if (seen.has(signature)) continue;
+          seen.add(signature);
           issues.push({
             id: Math.random().toString(36).substring(7),
             title: p.title,
             file: file.path,
             line,
             description: p.desc,
-            severity: p.severity
+            severity: p.severity,
+            confidence: p.confidence || 'low'
           });
           if (issues.length > 10) break;
         }
@@ -393,5 +406,22 @@ export class StaticAnalysisService {
       '.py': 'Python', '.go': 'Go', '.java': 'Java', '.html': 'HTML', '.css': 'CSS'
     };
     return names[ext] || 'Other';
+  }
+
+  static patternSupportsFile(pattern, file) {
+    if (!pattern.extensions || pattern.extensions.length === 0) return true;
+    return pattern.extensions.includes(file.extension);
+  }
+
+  static isAnalyzableSourceFile(file) {
+    const p = (file.path || '').toLowerCase();
+    const excludedDirs = ['node_modules/', '/dist/', '/build/', '/.next/', '/coverage/'];
+    if (excludedDirs.some(seg => p.includes(seg))) return false;
+
+    // Skip likely minified or bundled files
+    if (p.includes('.min.')) return false;
+    if ((file.lines || 0) < 5 && (file.size || 0) > 5000) return false;
+
+    return true;
   }
 }
