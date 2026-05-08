@@ -52,8 +52,8 @@ export class GithubService {
     try {
       console.log(`[GITHUB_SERVICE] Cloning ${repoUrl} to ${tempDir}`);
       
-      // Increased timeout to 5 minutes as 60s is too short for some connections/repos
-      const CLONE_TIMEOUT = 300000; 
+      // Increased timeout to 10 minutes for massive repos (Supabase, etc)
+      const CLONE_TIMEOUT = 600000; 
       
       const clonePromise = git.clone(repoUrl, tempDir, [
         '-c', 'credential.helper=',
@@ -168,12 +168,20 @@ export class GithubService {
    * @param {string} tempDir 
    */
   static async cleanupRepo(tempDir) {
-    try {
-      if (tempDir && await fs.pathExists(tempDir)) {
+    if (!tempDir || !(await fs.pathExists(tempDir))) return;
+
+    // Retry mechanism for Windows EBUSY/lock issues
+    for (let i = 0; i < 3; i++) {
+      try {
         await fs.remove(tempDir);
+        return;
+      } catch (error) {
+        if (i === 2) console.error(`[GITHUB_SERVICE] Final cleanup attempt failed for ${tempDir}:`, error.message);
+        else {
+          console.warn(`[GITHUB_SERVICE] Cleanup retry ${i + 1} for ${tempDir} due to lock...`);
+          await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1)));
+        }
       }
-    } catch (error) {
-      console.error(`Failed to clean up repo at ${tempDir}:`, error);
     }
   }
 }

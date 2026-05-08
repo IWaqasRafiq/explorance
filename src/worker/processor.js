@@ -53,15 +53,18 @@ export default async function processor(job) {
     };
 
     // 1. Ingestion
-    await updateStatus(10, 'Downloading repository...');
+    await updateStatus(10, 'Establishing secure connection...');
+    await updateStatus(15, 'Downloading repository structure...');
     tempDir = await GithubService.cloneRepo(repoUrl);
 
-    await updateStatus(20, 'Extracting and preparing files...');
-    await updateStatus(30, 'Scanning and filtering files...');
+    await updateStatus(25, 'Analyzing file hierarchy...');
+    await updateStatus(30, 'Scanning source code...');
     const files = await FileService.scanDirectory(tempDir);
+    
+    await updateStatus(35, `Processing ${files.length} files...`);
 
     // 2. Parallel Processing (Faster performance)
-    await updateStatus(45, 'Generating intelligence and analysis...');
+    await updateStatus(40, 'Indexing project symbols...');
     const isProd = process.env.NODE_ENV === 'production';
     const defaultChunkLimit = isProd ? 200 : 120;
     const CHUNK_LIMIT = toPositiveInt(process.env.ANALYSIS_CHUNK_LIMIT, defaultChunkLimit);
@@ -76,21 +79,25 @@ export default async function processor(job) {
     const includeAIInPartial = process.env.INCLUDE_AI_IN_PARTIAL_REPORT === 'true';
     const includeAI = reportMode === 'full' || includeAIInPartial;
 
+    await updateStatus(50, `Running deep audit (${reportMode} mode)...`);
     const chunks = ChunkingService.processFiles(files);
-
 
     console.log(`[PROCESSOR] Processing ${Math.min(chunks.length, CHUNK_LIMIT)} of ${chunks.length} chunks`);
     if (shouldUsePartialReport) {
       console.log(`[PROCESSOR] Large repo detected (${files.length} files). Generating partial report from ${reportFiles.length} representative files.`);
+      await updateStatus(55, 'Filtering core architectural files...');
     }
 
     const chunksForEmbeddings = chunks.slice(0, CHUNK_LIMIT);
+    
+    await updateStatus(65, 'Querying AI Knowledge Base...');
     const report = await ReportService.generateFullReport(projectId, reportFiles, {
       includeAI,
       mode: reportMode,
       totalFiles: files.length
     });
 
+    await updateStatus(80, 'Generating semantic embeddings...');
     const vectorizationTask = VectorService.storeChunks(projectId, chunksForEmbeddings, updateStatus)
       .then(() => {
         console.log(`[PROCESSOR] Vectorization complete for project ${projectId}`);
@@ -107,7 +114,8 @@ export default async function processor(job) {
     }
 
     // 3. Finalizing
-    await updateStatus(95, 'Saving analysis results...');
+    await updateStatus(90, 'Finalizing QA results...');
+    await updateStatus(95, 'Synthesizing report metadata...');
     
     try {
       await AnalysisResult.create({

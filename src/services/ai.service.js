@@ -34,7 +34,7 @@ export class AIService {
 
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     const useGemini = !!GEMINI_API_KEY;
-    const geminiModel = process.env.GEMINI_MODEL_TEXT || 'gemini-2.0-flash';
+    const geminiModel = process.env.GEMINI_MODEL_TEXT || 'gemini-3-flash';
     const maxFilesInPrompt = toPositiveInt(process.env.AI_PROMPT_MAX_FILES, 12);
     const geminiTimeoutMs = toPositiveInt(process.env.AI_GEMINI_TIMEOUT_MS, 20000);
     const ollamaTimeoutMs = toPositiveInt(process.env.AI_OLLAMA_TIMEOUT_MS, 90000);

@@ -4,8 +4,18 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from 'next/link';
 import { ArrowLeft, Loader2 } from "lucide-react";
+import { motion, useScroll, useSpring } from "framer-motion";
 import { AppLayout } from "@/components/app-layout";
 import { Button } from "@/components/ui/button";
+
+const useScrollProgress = () => {
+  const { scrollYProgress } = useScroll();
+  return useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+};
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAnalysisStore } from "@/lib/store";
@@ -26,51 +36,165 @@ const ReportPage = () => {
   const { id } = useParams();
   const cached = useAnalysisStore((s) => s.report);
   const [report, setReport] = useState(cached?.id === id ? cached : null);
+  const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const scrollProgress = useScrollProgress();
 
   useEffect(() => {
     document.title = "Report · AI GitHub Explorer";
   }, []);
 
+  // Main report fetcher
   useEffect(() => {
-    if (!id || report && report.id === id) return;
-    let active = true;
-    apiClient.
-    report(id).
-    then((r) => active && setReport(r)).
-    catch((e) => active && setError(e instanceof Error ? e.message : "Not found"));
-    return () => {active = false;};
-  }, [id, report]);
+    if (!id) return;
+    
+    const fetchReport = async () => {
+      try {
+        const r = await apiClient.report(id);
+        setReport(r);
+        setIsSyncing(false);
+        setError(null);
+      } catch (e) {
+        const msg = e.message.toLowerCase();
+        if (msg.includes('in progress') || msg.includes('no report data yet')) {
+          setIsSyncing(true);
+        } else {
+          setError(e.message);
+        }
+      }
+    };
+
+    if (!report || isSyncing) {
+      fetchReport();
+    }
+  }, [id, report, isSyncing]);
+
+  // Status poller for syncing state
+  useEffect(() => {
+    if (!id || !isSyncing) return;
+
+    const poll = setInterval(async () => {
+      try {
+        const s = await apiClient.status(id);
+        setStatus(s);
+        if (s.status === 'completed') {
+          setIsSyncing(false);
+          const r = await apiClient.report(id);
+          setReport(r);
+        }
+      } catch (err) {
+        console.error("Poller error:", err);
+      }
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [id, isSyncing]);
 
   if (error) {
     return (
       <AppLayout>
         <section className="container max-w-xl py-20">
-          <Card>
-            <CardContent className="space-y-3 p-8 text-center">
-              <h1 className="text-xl font-semibold">Report unavailable</h1>
-              <p className="text-sm text-muted-foreground">{error}. Reports live in-session — start a new analysis to generate one.</p>
-              <Button asChild><Link href="/analyze">Start analysis</Link></Button>
+          <Card className="border-destructive/20 bg-destructive/5">
+            <CardContent className="space-y-4 p-8 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                <ArrowLeft className="h-6 w-6" />
+              </div>
+              <h1 className="text-xl font-bold tracking-tight">Intelligence Feed Interrupted</h1>
+              <p className="text-sm text-muted-foreground">{error}</p>
+              <div className="flex justify-center gap-2">
+                <Button variant="outline" onClick={() => window.location.reload()}>Retry Connection</Button>
+                <Button asChild><Link href="/analyze">Start New Scan</Link></Button>
+              </div>
             </CardContent>
           </Card>
         </section>
       </AppLayout>);
-
   }
 
-  if (!report) {
+  if (isSyncing || (!report && !error)) {
+    const logs = [
+      "Establishing neural link to repository...",
+      "Intercepting file system events...",
+      "Mapping dependency graph...",
+      "Scanning for architectural patterns...",
+      "Evaluating technical debt...",
+      "Running QA heuristics...",
+      "Synthesizing final intelligence..."
+    ];
+    const activeLogIdx = Math.min(Math.floor((status?.progress || 0) / 15), logs.length - 1);
+
     return (
       <AppLayout>
-        <div className="container flex items-center justify-center py-32">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <div className="container max-w-2xl py-24 text-center">
+          <div className="relative mx-auto mb-8 h-24 w-24">
+            <Loader2 className="h-24 w-24 animate-spin text-primary/20" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-lg font-bold text-primary">{status?.progress || 0}%</span>
+            </div>
+          </div>
+          <h1 className="mb-2 text-2xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/50 bg-clip-text text-transparent">Deep Audit in Progress...</h1>
+          <p className="mb-8 text-muted-foreground">
+            Current Stage: <span className="font-mono text-primary uppercase tracking-tighter">{status?.stage || "Establishing Perimeter"}</span>
+          </p>
+          
+          <div className="space-y-4 rounded-xl border border-border/40 bg-black/40 backdrop-blur-sm p-6 text-left shadow-2xl">
+            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              <span className="flex items-center gap-2"><div className="h-2 w-2 animate-pulse rounded-full bg-green-500" /> Security Protocols</span>
+              <span className="text-primary">Neural Link Active</span>
+            </div>
+            
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/30">
+               <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: `${status?.progress || 10}%` }}
+                className="h-full bg-gradient-to-r from-primary/50 to-primary"
+               />
+            </div>
+
+            {/* Neural Feed */}
+            <div className="mt-6 space-y-2 font-mono text-[10px] uppercase tracking-tighter">
+              {logs.slice(0, activeLogIdx + 1).map((log, i) => (
+                <motion.div 
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: i === activeLogIdx ? 1 : 0.4, x: 0 }}
+                  key={log}
+                  className="flex items-center gap-2 text-muted-foreground"
+                >
+                  <span className={i === activeLogIdx ? "text-primary" : ""}>{i === activeLogIdx ? ">" : "•"}</span>
+                  <span className={i === activeLogIdx ? "text-foreground font-bold" : ""}>{log}</span>
+                  {i === activeLogIdx && <span className="h-3 w-1 animate-pulse bg-primary" />}
+                </motion.div>
+              ))}
+            </div>
+          </div>
+          
+          <Button variant="ghost" className="mt-8 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors" asChild>
+            <Link href="/dashboard">Return to Dashboard</Link>
+          </Button>
         </div>
       </AppLayout>);
-
   }
 
   return (
     <AppLayout>
-      <section className="container space-y-6 py-10">
+      {/* Scroll Progress Bar */}
+      <motion.div 
+        className="fixed top-0 left-0 right-0 h-1 bg-primary z-[60] origin-left"
+        style={{ scaleX: scrollProgress }}
+      />
+
+      <section className="container space-y-6 py-10 relative">
+        {/* Completion Glow Effect */}
+        {report && !isSyncing && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.2, 0] }}
+            transition={{ duration: 2, repeat: 1 }}
+            className="absolute inset-0 bg-primary/20 pointer-events-none blur-3xl rounded-full"
+          />
+        )}
+
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" size="sm">
             <Link href="/dashboard"><ArrowLeft className="mr-2 h-4 w-4" />Dashboard</Link>
