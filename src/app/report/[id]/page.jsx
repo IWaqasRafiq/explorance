@@ -40,6 +40,14 @@ const ReportPage = () => {
   const [error, setError] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const scrollProgress = useScrollProgress();
+  const [showWarning, setShowWarning] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isSyncing && (status?.progress === 0 || !status)) setShowWarning(true);
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [status, isSyncing]);
 
   useEffect(() => {
     document.title = "Report · AI GitHub Explorer";
@@ -168,6 +176,17 @@ const ReportPage = () => {
               ))}
             </div>
           </div>
+
+          {showWarning && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-8 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-200/80"
+            >
+              <p className="font-bold uppercase tracking-tight mb-1 text-amber-500">System Latency Detected</p>
+              The deep audit is taking longer than expected to initialize. This usually happens if the backend analysis worker is offline or the repository is extremely large.
+            </motion.div>
+          )}
           
           <Button variant="ghost" className="mt-8 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors" asChild>
             <Link href="/dashboard">Return to Dashboard</Link>

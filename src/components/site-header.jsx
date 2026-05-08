@@ -21,7 +21,7 @@ export function SiteHeader() {
     <header className="sticky top-0 z-40 w-full border-b border-border/60 glass">
       <div className="container flex h-14 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground text-background">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-background">
             <Image src={Logo} alt="Explorance Logo" width={24} height={24} />
           </div>
           <span>Explorance</span>
